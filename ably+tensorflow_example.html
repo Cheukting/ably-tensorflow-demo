@@ -1,0 +1,74 @@
+<html>
+  <body>
+    <h1>TfL traffic notifier</h1>
+    <p></p>
+
+    <div>
+    Your update: <input type="text" id="message-text" value=""> <button id="send-message">Submit an update</button>
+    </div>
+    <textarea id="result" rows="10" style="width: 60%; margin-top: 10px; font-family: courier, courier new; background-color: #333; color: orange" disabled=""></textarea>
+    </div>
+  </body>
+
+  <!-- Include the latest Ably Library  -->
+  <script src="https://cdn.ably.io/lib/ably.min-1.js"></script>
+
+  <!-- Include tf model -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/toxicity"></script>
+
+  <!-- Instance the Ably library  -->
+  <script type="text/javascript">
+
+    // Set up Ably's channel
+    var realtime = new Ably.Realtime(<your API key>; // put your API key here
+    var channel = realtime.channels.get("my_channel");
+    var tfl_channel = realtime.channels.get("[product:ably-tfl/tube]tube:disruptions");
+
+    // Helper function for getting the timestamp
+    function get_current_time(){
+        return '[' + Date().toLocaleString() + ']\n';
+    }
+
+    // Getting the update from users
+    channel.subscribe(function(msg) {
+        document.getElementById("result").innerHTML = (get_current_time() + "User update: " + msg.data + "\n\n") + document.getElementById("result").innerHTML;
+    });
+    // Getting the update form TfL streamer
+    tfl_channel.subscribe(function(msg) {
+        if (msg.data.length == 0) {
+            document.getElementById("result").innerHTML = (get_current_time() + "TfL: Good service on all lines." + "\n\n") + document.getElementById("result").innerHTML;
+        }else{
+            msg.data.forEach(function(each_issue){
+                document.getElementById("result").innerHTML = (get_current_time() + each_issue.description + "\n\n") + document.getElementById("result").innerHTML;
+            })
+        }
+    });
+
+    // When the user send an update, check if it is a toxic comment, publish if it is not.
+    document.getElementById("send-message").addEventListener("click", function(){
+        let input_text = document.getElementById("message-text").value;
+        let threshold = 0.9;
+        var all_prediction = false;
+        if (input_text != ""){
+            toxicity.load(threshold).then(function(model){
+                model.classify(input_text).then(function(predictions){
+                    predictions.forEach(function(each_prediction){
+                        let results = each_prediction.results
+                        if (results[0].match){
+                            all_prediction = true;
+                            return 0;
+                        }
+                    });
+                    if (all_prediction){
+                        alert("Please be nice.")
+                    }else{
+                        channel.publish("update", input_text);
+                        document.getElementById("message-text").value = ""
+                    }
+                });
+            });
+        }
+    })
+  </script>
+</html>
